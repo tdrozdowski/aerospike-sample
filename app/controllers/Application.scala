@@ -4,7 +4,7 @@ import eu.unicredit.reactive_aerospike.client.AerospikeClient
 import eu.unicredit.reactive_aerospike.data.AerospikeKey
 import eu.unicredit.reactive_aerospike.future.ScalaFactory
 import models.{UserDao, User}
-import models.User.userFormats
+import models.UserDao._
 import play.api.Logger
 import play.api.libs.json.Json
 import play.api.mvc._

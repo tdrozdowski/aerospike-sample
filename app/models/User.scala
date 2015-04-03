@@ -4,7 +4,11 @@ import eu.unicredit.reactive_aerospike.data.{AerospikeBinProto, AerospikeKey, Ae
 import eu.unicredit.reactive_aerospike.model.Dao
 import eu.unicredit.reactive_aerospike.model.experimental._
 import eu.unicredit.reactive_aerospike.data.AerospikeValue._
-import play.api.libs.json.Json
+import play.api.libs.json._
+import play.api.libs.json.Reads._
+
+import scala.reflect.ClassTag
+
 
 /**
  * User model & DAO
@@ -12,10 +16,6 @@ import play.api.libs.json.Json
  * Created by terry on 3/15/15.
  */
 case class User(id : AerospikeKey[String], firstName : String, lastName : String, email : String) extends EqualUser
-
-object User {
-  implicit val userFormats = Json.format[User]
-}
 
 trait EqualUser {
   self: User =>
@@ -28,7 +28,23 @@ trait EqualUser {
   }
 }
 
+object Implicits {
+  // From Play 2.4...
+  implicit object ByteReads extends Reads[Byte] {
+    def reads(json: JsValue) = json match {
+      case JsNumber(n) if n.isValidByte => JsSuccess(n.toByte)
+      case JsNumber(n) => JsError("error.expected.byte")
+      case _ => JsError("error.expected.jsnumber")
+    }
+  }
+
+  implicit object ByteWrites extends Writes[Byte] {
+    def writes(o: Byte) = JsNumber(o)
+  }
+}
+
 object UserDao extends Dao[String, User] {
+  import Implicits._
 
   val namespace = "test"
   val setName = "users"
@@ -38,5 +54,24 @@ object UserDao extends Dao[String, User] {
   val objWrite : Seq[AerospikeBinProto[User, _]]  = Dao.macroObjWrite[User]
 
   val objRead : (AerospikeKey[String], AerospikeRecord) => User = Dao.macroObjRead[User][String]
+
+  implicit def aerospikeKeyWrites[T: ClassTag]: Writes[AerospikeKey[T]] with Object {def writes(ak: AerospikeKey[T]): JsArray} = new Writes[AerospikeKey[T]] {
+    def writes(ak : AerospikeKey[T]) = JsArray(ak.digest.map(b => Json.toJson(b)).toList)
+  }
+
+  implicit def aerospikeKeyReads[T: ClassTag](implicit keyConverter: AerospikeValueConverter[T]) : Reads[AerospikeKey[T]] = new Reads[AerospikeKey[T]] {
+    def reads(json : JsValue) = json match {
+      case JsString(s) =>
+        try {
+          new JsSuccess(AerospikeKey(namespace, setName, s.getBytes)(keyConverter))
+        } catch {
+          case err : Throwable => JsError(s"validation error: ${err.getMessage}")
+        }
+
+      case _ => JsError("error.expected.jsstring")
+    }
+  }
+
+  implicit val userFormat = Json.format[User]
 
 }
